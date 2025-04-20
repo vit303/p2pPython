@@ -1,0 +1,197 @@
+#:kivy 2.0.0
+
+<MainScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 10
+        spacing: 10
+        
+        TabbedPanel:
+            do_default_tab: False
+            
+            TabbedPanelItem:
+                text: 'UPnP Port Forwarding'
+                BoxLayout:
+                    orientation: 'vertical'
+                    spacing: 10
+                    
+                    Label:
+                        text: 'UPnP Port Forwarding'
+                        font_size: 24
+                        size_hint_y: None
+                        height: 50
+                    
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: None
+                        height: 40
+                        
+                        Label:
+                            text: 'External Port:'
+                            size_hint_x: 0.3
+                            
+                        TextInput:
+                            id: external_port
+                            text: '7777'
+                            multiline: False
+                            input_filter: 'int'
+                            size_hint_x: 0.7
+                    
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: None
+                        height: 40
+                        
+                        Label:
+                            text: 'Internal Port:'
+                            size_hint_x: 0.3
+                            
+                        TextInput:
+                            id: internal_port
+                            text: '7777'
+                            multiline: False
+                            input_filter: 'int'
+                            size_hint_x: 0.7
+                    
+                    Button:
+                        text: 'Open Port with UPnP'
+                        size_hint_y: None
+                        height: 50
+                        on_press: root.open_port()
+                    
+                    ScrollView:
+                        TextInput:
+                            id: upnp_status
+                            text: 'UPnP status will appear here...'
+                            readonly: True
+                            background_color: 0.9, 0.9, 0.9, 1
+                            foreground_color: 0, 0, 0, 1
+            
+            TabbedPanelItem:
+                text: 'Server'
+                BoxLayout:
+                    orientation: 'vertical'
+                    spacing: 10
+                    
+                    Label:
+                        text: 'Server Mode'
+                        font_size: 24
+                        size_hint_y: None
+                        height: 50
+                    
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: None
+                        height: 40
+                        
+                        Label:
+                            text: 'Port:'
+                            size_hint_x: 0.3
+                            
+                        TextInput:
+                            id: server_port
+                            text: '7777'
+                            multiline: False
+                            input_filter: 'int'
+                            size_hint_x: 0.7
+                    
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        spacing: 10
+                        size_hint_y: None
+                        height: 50
+                        
+                        Button:
+                            id: start_server_btn
+                            text: 'Start Server'
+                            on_press: root.toggle_server()
+                        
+                        Button:
+                            text: 'Send Message'
+                            on_press: root.send_server_message()
+                    
+                    TextInput:
+                        id: server_message
+                        hint_text: 'Enter message to send to clients'
+                        size_hint_y: None
+                        height: 50
+                    
+                    ScrollView:
+                        TextInput:
+                            id: server_log
+                            text: 'Server log will appear here...'
+                            readonly: True
+                            background_color: 0.9, 0.9, 0.9, 1
+                            foreground_color: 0, 0, 0, 1
+            
+            TabbedPanelItem:
+                text: 'Client'
+                BoxLayout:
+                    orientation: 'vertical'
+                    spacing: 10
+                    
+                    Label:
+                        text: 'Client Mode'
+                        font_size: 24
+                        size_hint_y: None
+                        height: 50
+                    
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: None
+                        height: 40
+                        
+                        Label:
+                            text: 'Server IP:'
+                            size_hint_x: 0.3
+                            
+                        TextInput:
+                            id: server_ip
+                            text: '127.0.0.1'
+                            multiline: False
+                            size_hint_x: 0.7
+                    
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: None
+                        height: 40
+                        
+                        Label:
+                            text: 'Port:'
+                            size_hint_x: 0.3
+                            
+                        TextInput:
+                            id: client_port
+                            text: '7777'
+                            multiline: False
+                            input_filter: 'int'
+                            size_hint_x: 0.7
+                    
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        spacing: 10
+                        size_hint_y: None
+                        height: 50
+                        
+                        Button:
+                            id: connect_btn
+                            text: 'Connect'
+                            on_press: root.toggle_client()
+                        
+                        Button:
+                            text: 'Send'
+                            on_press: root.send_client_message()
+                    
+                    TextInput:
+                        id: client_message
+                        hint_text: 'Enter message to send to server'
+                        size_hint_y: None
+                        height: 50
+                    
+                    ScrollView:
+                        TextInput:
+                            id: client_log
+                            text: 'Client log will appear here...'
+                            readonly: True
+                            background_color: 0.9, 0.9, 0.9, 1
+                            foreground_color: 0, 0, 0, 1
