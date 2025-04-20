@@ -17,5 +17,5 @@ def start_client(server_ip, port):
 
 if __name__ == '__main__':
     server_ip = input("Enter the server IP address: ")  # Get server IP address from user
-    port = 8080  # Port must match the server's port
+    port = 7777  # Port must match the server's port
     start_client(server_ip, port)
