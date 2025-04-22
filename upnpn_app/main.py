@@ -1,115 +1,155 @@
 from kivy.app import App
-from kivy.uix.screenmanager import Screen
-from kivy.properties import BooleanProperty
-from kivy.lang import Builder
+from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelItem
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.button import Button
+from kivy.uix.scrollview import ScrollView
+from kivy.clock import Clock
+import threading
+from server import Server
+from client import Client
 
-from upnp_manager import UPNPManager
-from network_server import NetworkServer
-from network_client import NetworkClient
-
-Builder.load_file('upnp_app.kv')
-
-class MainScreen(Screen):
-    server_running = BooleanProperty(False)
-    client_connected = BooleanProperty(False)
-    
-    def __init__(self, **kwargs):
-        super(MainScreen, self).__init__(**kwargs)
-        # Инициализируем сервер с портом по умолчанию
-        self.server = NetworkServer(on_message_callback=self.update_server_log)
-        self.client = NetworkClient(on_message_callback=self.update_client_log)
-        self.server_running = False
-        self.client_connected = False
-    
-    def update_upnp_status(self, message):
-        self.ids.upnp_status.text += f"\n{message}"
-    
-    def update_server_log(self, message):
-        self.ids.server_log.text += f"\n{message}"
-    
-    def update_client_log(self, message):
-        self.ids.client_log.text += f"\n{message}"
-    
-    def open_port(self):
-        try:
-            external_port = int(self.ids.external_port.text)
-            internal_port = int(self.ids.internal_port.text)
-        except ValueError:
-            self.update_upnp_status("Invalid port number!")
-            return
-        
-        success, message = UPNPManager.open_port(external_port, internal_port)
-        self.update_upnp_status(message)
-    
-    def toggle_server(self):
-        if self.server_running:
-            self.server.stop()
-            self.ids.start_server_btn.text = "Start Server"
-            self.server_running = False
-            self.update_server_log("Server stopped")
-        else:
-            try:
-                port = int(self.ids.server_port.text)
-                self.server.port = port  # Обновляем порт перед запуском
-                if self.server.start():
-                    self.ids.start_server_btn.text = "Stop Server"
-                    self.server_running = True
-                    self.update_server_log(f"Server started on port {port}")
-            except ValueError:
-                self.update_server_log("Invalid port number!")
-        
-    def send_server_message(self):
-        if not self.server_running:
-            self.update_server_log("Server is not running!")
-            return
-        
-        message = self.ids.server_message.text
-        if message:
-            self.server.send_to_all(message)
-            self.update_server_log(f"You: {message}")
-            self.ids.server_message.text = ""
-    
-    def toggle_client(self):
-        if self.client_connected:
-            self.client.disconnect()
-            self.ids.connect_btn.text = "Connect"
-            self.client_connected = False
-            self.update_client_log("Disconnected from server")
-        else:
-            server_ip = self.ids.server_ip.text
-            if not server_ip:
-                self.update_client_log("Please enter server IP!")
-                return
-            
-            try:
-                port = int(self.ids.client_port.text)
-            except ValueError:
-                self.update_client_log("Invalid port number!")
-                return
-            
-            success, message = self.client.connect(server_ip, port)
-            self.update_client_log(message)
-            if success:
-                self.ids.connect_btn.text = "Disconnect"
-                self.client_connected = True
-    
-    def send_client_message(self):
-        if not self.client_connected:
-            self.update_client_log("Not connected to server!")
-            return
-        
-        message = self.ids.client_message.text
-        if message:
-            if self.client.send_message(message):
-                self.update_client_log(f"You: {message}")
-                self.ids.client_message.text = ""
-            else:
-                self.update_client_log("Failed to send message")
-
-class UPnPApp(App):
+class ChatApp(App):
     def build(self):
-        self.title = 'UPnP Port Forwarding & Network Tools'
-        return MainScreen()
+        self.root = TabbedPanel()
+        
+        # Server Tab
+        server_tab = BoxLayout(orientation='vertical')
+        
+        # Chat output
+        self.server_chat = ScrollView()
+        self.server_label = Label(size_hint_y=None, text_size=(None, None))
+        self.server_label.bind(texture_size=self.server_label.setter('size'))
+        self.server_chat.add_widget(self.server_label)
+        server_tab.add_widget(self.server_chat)
+        
+        # Server controls
+        server_controls = BoxLayout(size_hint_y=0.15)
+        self.server_msg_input = TextInput(hint_text='Type message...', multiline=False)
+        self.server_send_btn = Button(text='Send', size_hint_x=0.3)
+        self.server_send_btn.bind(on_press=self.send_server_message)
+        server_controls.add_widget(self.server_msg_input)
+        server_controls.add_widget(self.server_send_btn)
+        server_tab.add_widget(server_controls)
+        
+        # Server management
+        server_manage = BoxLayout(size_hint_y=0.15)
+        self.start_btn = Button(text='Start Server')
+        self.start_btn.bind(on_press=self.toggle_server)
+        self.upnp_btn = Button(text='Open UPnP Port')
+        self.upnp_btn.bind(on_press=self.open_upnp)
+        server_manage.add_widget(self.start_btn)
+        server_manage.add_widget(self.upnp_btn)
+        server_tab.add_widget(server_manage)
+        
+        self.root.add_widget(TabbedPanelItem(text='Server', content=server_tab))
+        
+        # Client Tab
+        client_tab = BoxLayout(orientation='vertical')
+        
+        # Chat output
+        self.client_chat = ScrollView()
+        self.client_label = Label(size_hint_y=None, text_size=(None, None))
+        self.client_label.bind(texture_size=self.client_label.setter('size'))
+        self.client_chat.add_widget(self.client_label)
+        client_tab.add_widget(self.client_chat)
+        
+        # Client controls
+        client_controls = BoxLayout(size_hint_y=0.15)
+        self.client_msg_input = TextInput(hint_text='Type message...', multiline=False)
+        self.client_send_btn = Button(text='Send', size_hint_x=0.3)
+        self.client_send_btn.bind(on_press=self.send_client_message)
+        client_controls.add_widget(self.client_msg_input)
+        client_controls.add_widget(self.client_send_btn)
+        client_tab.add_widget(client_controls)
+        
+        # Connection
+        conn_layout = BoxLayout(size_hint_y=0.15)
+        self.ip_input = TextInput(hint_text='Server IP', multiline=False)
+        self.connect_btn = Button(text='Connect', size_hint_x=0.3)
+        self.connect_btn.bind(on_press=self.toggle_client_connection)
+        conn_layout.add_widget(self.ip_input)
+        conn_layout.add_widget(self.connect_btn)
+        client_tab.add_widget(conn_layout)
+        
+        self.root.add_widget(TabbedPanelItem(text='Client', content=client_tab))
+        
+        # Setup callbacks
+        Server.set_gui_callback(self.update_server_chat)
+        Client.set_gui_callback(self.update_client_chat)
+        
+        return self.root
+
+    def update_server_chat(self, message):
+        def update(dt):
+            self.server_label.text += f"\n{message}"
+            self.server_chat.scroll_y = 0
+        Clock.schedule_once(update)
+
+    def update_client_chat(self, message):
+        def update(dt):
+            self.client_label.text += f"\n{message}"
+            self.client_chat.scroll_y = 0
+        Clock.schedule_once(update)
+
+    def toggle_server(self, instance):
+        if Server.running:
+            self.stop_server()
+        else:
+            self.start_server()
+
+    def start_server(self):
+        self.start_btn.text = 'Stop Server'
+        threading.Thread(target=Server.start_server, args=(15000,), daemon=True).start()
+
+    def stop_server(self):
+        Server.stop_server()
+        self.start_btn.text = 'Start Server'
+
+    def open_upnp(self, instance):
+        threading.Thread(target=Server.open_port, args=(15000, 15000, 'TCP', 'Chat Server'), daemon=True).start()
+
+    def toggle_client_connection(self, instance):
+        if Client.running:
+            self.disconnect_client()
+        else:
+            self.connect_client()
+
+    def connect_client(self):
+        ip = self.ip_input.text
+        if not ip:
+            self.update_client_chat("[ERROR] Enter server IP")
+            return
+            
+        self.connect_btn.text = 'Disconnect'
+        threading.Thread(target=Client.start_client, args=(ip, 15000), daemon=True).start()
+
+    def disconnect_client(self):
+        Client.stop_client()
+        self.connect_btn.text = 'Connect'
+
+    def send_server_message(self, instance):
+        if not Server.running:
+            self.update_server_chat("[ERROR] Server not running")
+            return
+            
+        msg = self.server_msg_input.text
+        if msg:
+            Server.broadcast(f"[Server] {msg}", ("Server", 0))
+            self.update_server_chat(f"[You] {msg}")
+            self.server_msg_input.text = ''
+
+    def send_client_message(self, instance):
+        if not Client.running:
+            self.update_client_chat("[ERROR] Not connected")
+            return
+            
+        msg = self.client_msg_input.text
+        if msg:
+            Client.send_message(msg)
+            self.update_client_chat(f"[You] {msg}")
+            self.client_msg_input.text = ''
 
 if __name__ == '__main__':
-    UPnPApp().run()
+    ChatApp().run()
