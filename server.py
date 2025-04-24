@@ -140,8 +140,8 @@ def start_server(port):
         server.close()
 
 def main():
-    external_port = 15000
-    internal_port = 15000
+    external_port = 15001
+    internal_port = 15001
     protocol = 'TCP'
     description = 'Test UPnP port'
 
