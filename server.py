@@ -44,7 +44,6 @@ def open_port(external_port, internal_port, protocol='TCP', description='My Port
     print(f"[Инфо] Ваш локальный IP: {lan_address}")
     print(f"[Инфо] Ваш внешний IP: {external_ip}")
 
-    # Проверяем, есть ли уже проброс на этот порт
     try:
         existing_mapping = upnp.getspecificportmapping(external_port, protocol)
         if existing_mapping:
@@ -57,10 +56,8 @@ def open_port(external_port, internal_port, protocol='TCP', description='My Port
                 print(f"[Ошибка] Не удалось удалить существующее правило: {e}")
                 return False
     except Exception as e:
-        # Иногда роутер не поддерживает getspecificportmapping корректно
         print(f"[Предупреждение] Не удалось проверить существующие правила: {e}")
 
-    # Пробуем открыть порт
     try:
         upnp.addportmapping(external_port, protocol, lan_address, internal_port, description, '', 0)
         print(f"[Успех] Порт {external_port} успешно открыт через UPnP.")
@@ -73,7 +70,6 @@ def open_port(external_port, internal_port, protocol='TCP', description='My Port
         print("- Проверить настройки роутера")
         return False
 
-    # Проверяем, открыт ли порт снаружи
     print("[Инфо] Проверка, открыт ли порт снаружи (по внешнему IP)...")
     if is_port_open(external_ip, int(external_port)):
         print(f"[Успех] Порт {external_port} доступен снаружи!")
@@ -83,48 +79,44 @@ def open_port(external_port, internal_port, protocol='TCP', description='My Port
         print("Проверьте порт на https://2ip.ru/check-port/ или аналогичных сервисах.")
     return True
 
+def receive_messages(client_socket, addr):
+    try:
+        while True:
+            data = client_socket.recv(1024)
+            if not data:
+                print(f"[Инфо] Клиент {addr} отключился.")
+                break
+            print(f"\n[Сообщение от {addr}]: {data.decode('utf-8', errors='ignore')}")
+    except Exception as e:
+        print(f"[Ошибка] Ошибка при получении данных от {addr}: {e}")
+    finally:
+        client_socket.close()
+
+def send_messages(client_socket, addr):
+    try:
+        while True:
+            message = input("Введите ответ клиенту: ")
+            if not message:
+                continue
+            client_socket.sendall(message.encode('utf-8'))
+    except Exception as e:
+        print(f"[Ошибка] Ошибка при отправке данных клиенту {addr}: {e}")
+    finally:
+        client_socket.close()
+
+def handle_client(client_socket, addr):
+    print(f"[Инфо] Подключился клиент: {addr}")
+    
+    recv_thread = threading.Thread(target=receive_messages, args=(client_socket, addr), daemon=True)
+    send_thread = threading.Thread(target=send_messages, args=(client_socket, addr), daemon=True)
+    
+    recv_thread.start()
+    send_thread.start()
+    
+    recv_thread.join()
+    send_thread.join()
+
 def start_server(port):
-    import socket
-    import threading
-
-    def client_handler(client_socket, addr):
-        print(f"[Инфо] Подключился клиент: {addr}")
-
-        def receive_messages():
-            try:
-                while True:
-                    data = client_socket.recv(1024)
-                    if not data:
-                        print(f"[Инфо] Клиент {addr} отключился.")
-                        break
-                    print(f"\n[Сообщение от {addr}]: {data.decode('utf-8', errors='ignore')}")
-            except Exception as e:
-                print(f"[Ошибка] Ошибка при получении данных от {addr}: {e}")
-            finally:
-                client_socket.close()
-
-        def send_messages():
-            try:
-                while True:
-                    message = input("Введите ответ клиенту: ")
-                    if not message:
-                        continue
-                    client_socket.sendall(message.encode('utf-8'))
-            except Exception as e:
-                print(f"[Ошибка] Ошибка при отправке данных клиенту {addr}: {e}")
-            finally:
-                client_socket.close()
-
-        # Запускаем потоки для приёма и отправки сообщений
-        recv_thread = threading.Thread(target=receive_messages, daemon=True)
-        send_thread = threading.Thread(target=send_messages, daemon=True)
-        recv_thread.start()
-        send_thread.start()
-
-        # Ждём завершения потоков (например, при отключении клиента)
-        recv_thread.join()
-        send_thread.join()
-
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('', port))
     server.listen(5)
@@ -133,7 +125,7 @@ def start_server(port):
     try:
         while True:
             client_socket, addr = server.accept()
-            threading.Thread(target=client_handler, args=(client_socket, addr), daemon=True).start()
+            threading.Thread(target=handle_client, args=(client_socket, addr), daemon=True).start()
     except KeyboardInterrupt:
         print("\n[Инфо] Работа сервера остановлена пользователем.")
     finally:
@@ -154,4 +146,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
