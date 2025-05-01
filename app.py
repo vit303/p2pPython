@@ -1,7 +1,8 @@
 from flask import Flask, jsonify, request
 import threading
+import sqlite3
 from server import is_port_open, open_port, start_server, receive_messages, send_messages, handle_client
-from users_database import create_connection, insert_message, get_user_messages, create_tables  # Импорт функций из вашего DB-модуля
+from users_database import create_connection, insert_message, get_user_messages, create_tables
 
 app = Flask(__name__)
 
@@ -9,14 +10,18 @@ app = Flask(__name__)
 server_thread = None
 server_running = False
 current_port = None
-db_connection = None
 
 # Инициализация базы данных при старте API
 def init_db():
-    global db_connection
-    db_connection = create_connection("chat_db.sqlite")
-    if db_connection is not None:
-        create_tables(db_connection)
+    conn = create_connection("chat_db.sqlite")
+    if conn is not None:
+        create_tables(conn)
+        conn.close()
+
+# Функция для получения соединения с БД в каждом запросе
+def get_db_connection():
+    conn = create_connection("chat_db.sqlite")
+    return conn
 
 # Добавляем новый эндпоинт для работы с сообщениями
 @app.route('/api/messages', methods=['GET', 'POST'])
@@ -37,9 +42,11 @@ def save_message():
             'message': 'Username and message are required'
         }), 400
     
+    conn = get_db_connection()
     try:
-        success = insert_message(db_connection, username, message)
+        success = insert_message(conn, username, message)
         if success:
+            conn.commit()
             return jsonify({
                 'status': 'success',
                 'username': username,
@@ -51,10 +58,13 @@ def save_message():
                 'message': 'Failed to save message'
             }), 500
     except Exception as e:
+        conn.rollback()
         return jsonify({
             'status': 'error',
             'message': str(e)
         }), 500
+    finally:
+        conn.close()
 
 def get_messages():
     username = request.args.get('username')
@@ -65,8 +75,9 @@ def get_messages():
             'message': 'Username parameter is required'
         }), 400
     
+    conn = get_db_connection()
     try:
-        messages = get_user_messages(db_connection, username)
+        messages = get_user_messages(conn, username)
         if messages is not None:
             return jsonify({
                 'status': 'success',
@@ -86,6 +97,8 @@ def get_messages():
             'status': 'error',
             'message': str(e)
         }), 500
+    finally:
+        conn.close()
 
 # Модифицируем функцию handle_client для сохранения сообщений в БД
 def modified_handle_client(client_socket, addr):
@@ -93,7 +106,15 @@ def modified_handle_client(client_socket, addr):
     
     def save_received_message(message):
         username = f"client_{addr[0]}"  # Генерируем имя пользователя из IP
-        insert_message(db_connection, username, message)
+        conn = get_db_connection()
+        try:
+            insert_message(conn, username, message)
+            conn.commit()
+        except Exception as e:
+            print(f"Ошибка при сохранении сообщения: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
     
     recv_thread = threading.Thread(
         target=receive_messages_wrapper,
