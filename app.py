@@ -1,6 +1,5 @@
 from flask import Flask, jsonify, request
 import threading
-import sqlite3
 from server import is_port_open, open_port, start_server, receive_messages, send_messages, handle_client
 from users_database import create_connection, insert_message, get_user_messages, create_tables
 
@@ -260,6 +259,202 @@ def api_server_status():
         'server_running': server_running,
         'current_port': current_port
     })
+
+@app.route('/api/profile', methods=['GET'])
+def api_get_profile():
+    profile_id = request.args.get('profile_id')
+    if not profile_id:
+        return jsonify({'status': 'error', 'message': 'profile_id обязателен'}), 400
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM user_profiles WHERE profile_id = ?", (profile_id,))
+        profile = cursor.fetchone()
+        if profile:
+            return jsonify(dict(profile))
+        else:
+            return jsonify({'status': 'error', 'message': 'Профиль не найден'}), 404
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/profile', methods=['POST'])
+def api_create_profile():
+    data = request.get_json()
+    bio = data.get('bio', '')
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO user_profiles (bio) VALUES (?)", (bio,))
+        conn.commit()
+        return jsonify({'status': 'success', 'profile_id': cursor.lastrowid})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/profile', methods=['PUT'])
+def api_update_profile():
+    data = request.get_json()
+    profile_id = data.get('profile_id')
+    bio = data.get('bio')
+
+    if not profile_id or bio is None:
+        return jsonify({'status': 'error', 'message': 'profile_id и bio обязательны'}), 400
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE user_profiles SET bio = ? WHERE profile_id = ?", (bio, profile_id))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return jsonify({'status': 'error', 'message': 'Профиль не найден'}), 404
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/profile', methods=['DELETE'])
+def api_delete_profile():
+    profile_id = request.args.get('profile_id')
+    if not profile_id:
+        return jsonify({'status': 'error', 'message': 'profile_id обязателен'}), 400
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+
+        # Удаляем все посты, связанные с этим профилем
+        cursor.execute("DELETE FROM posts WHERE profile_id = ?", (profile_id,))
+
+        # Удаляем сам профиль
+        cursor.execute("DELETE FROM user_profiles WHERE profile_id = ?", (profile_id,))
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'status': 'error', 'message': 'Профиль не найден'}), 404
+
+        return jsonify({'status': 'success', 'message': 'Профиль и связанные посты удалены'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/post', methods=['GET'])
+def api_get_post():
+    post_id = request.args.get('post_id')
+    if not post_id:
+        return jsonify({'status': 'error', 'message': 'post_id обязателен'}), 400
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM posts WHERE post_id = ?", (post_id,))
+        post = cursor.fetchone()
+        if post:
+            return jsonify(dict(post))
+        else:
+            return jsonify({'status': 'error', 'message': 'Пост не найден'}), 404
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/post', methods=['POST'])
+def api_create_post():
+    data = request.get_json()
+    profile_id = data.get('profile_id')
+    content = data.get('content', '')
+    photo_url = data.get('photo_url', '')
+
+    if not profile_id:
+        return jsonify({'status': 'error', 'message': 'profile_id обязателен'}), 400
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO posts (profile_id, content, photo_url)
+            VALUES (?, ?, ?)
+        """, (profile_id, content, photo_url))
+        conn.commit()
+        return jsonify({'status': 'success', 'post_id': cursor.lastrowid})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/post', methods=['PUT'])
+def api_update_post():
+    data = request.get_json()
+    post_id = data.get('post_id')
+    content = data.get('content')
+    photo_url = data.get('photo_url')
+
+    if not post_id:
+        return jsonify({'status': 'error', 'message': 'post_id обязателен'}), 400
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE posts SET content = ?, photo_url = ?
+            WHERE post_id = ?
+        """, (content, photo_url, post_id))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return jsonify({'status': 'error', 'message': 'Пост не найден'}), 404
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/post', methods=['DELETE'])
+def api_delete_post():
+    post_id = request.args.get('post_id')
+    if not post_id:
+        return jsonify({'status': 'error', 'message': 'post_id обязателен'}), 400
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM posts WHERE post_id = ?", (post_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return jsonify({'status': 'error', 'message': 'Пост не найден'}), 404
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/posts', methods=['GET'])
+def api_get_posts_by_profile():
+    profile_id = request.args.get('profile_id')
+    if not profile_id:
+        return jsonify({'status': 'error', 'message': 'profile_id обязателен'}), 400
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM posts
+            WHERE profile_id = ?
+            ORDER BY created_at DESC
+        """, (profile_id,))
+        posts = cursor.fetchall()
+        return jsonify([dict(row) for row in posts])
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
